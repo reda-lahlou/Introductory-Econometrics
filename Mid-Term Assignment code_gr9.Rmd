@@ -1,0 +1,1287 @@
+---
+output:
+  pdf_document:
+    fig_caption: yes
+    toc: yes
+  word_document:
+    toc: yes
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(tinytex.verbose = TRUE)
+library("dplyr")
+library("ggplot2")
+library("Hmisc")
+library("tseries")
+library("tinytex")
+library("tidyverse")
+library("knitcitations")
+library("citr")
+library("plyr")
+library("lmtest")
+library("plot3D")
+```
+
+\newpage
+
+# Exercise 1: Logit analysis of energy consumption awareness
+
+
+```{r, echo=FALSE}
+dat.EEHA<-read.csv("EEHA.csv",sep=",",header=T)
+
+set.seed(09);
+sample.size<-1200;
+dat1<-dat.EEHA[sample(nrow(dat.EEHA), sample.size), ]
+
+dat1$age<-as.factor(dat1$age) 
+dat1.clean<-dat1[,c("invest_EE","light_score","EE_index","know_el","qty_inhabitants","house_type.1","income","age")]
+```
+
+```{r, echo=FALSE,include=FALSE}
+#1
+#Cross tabulation and joint frequency distribution of Y=know_el and X=age
+cross.table.age <- table(dat1.clean$know_el,dat1.clean$age,dnn = c("know_el","age"))
+colnames(cross.table.age) <- c("18-29","30-39","40-49","50-59","60 or older")
+
+#Joint sample freq distr
+Joint.frq.dist<-round(cross.table.age/sum(cross.table.age), digits=3)
+hist3D(z=Joint.frq.dist, xlab="know_el (Y)" , ylab="age (X)", main="Joint freq dist",border="black")
+
+# sample conditional dist
+(f_Y.X<-round(prop.table(cross.table.age,2),digits=5))
+
+# cond sample freq of knowing against age
+plot(f_Y.X[2,], xlab = "Age group", ylab = "Cond freq of knowing")
+
+
+# Odds plot
+odds<-f_Y.X[2,]/f_Y.X[1,] 
+plot(as.numeric(levels(dat1.clean$age)),odds,xlab="Age group")
+
+# Log-Odds plot
+plot(as.numeric(levels(dat1.clean$age)),log(odds),col="red", xlab = "Age group", ylab = "log-odds",pch = 19)
+abline(lm(log(odds) ~ 1+as.numeric(levels(dat1.clean$age))))
+R = cor(x = as.numeric(levels(dat1.clean$age)),y= log(odds))
+
+
+#2
+dat1.clean$age.n<-as.numeric(dat1.clean$age)-1
+
+M1.a<-glm(know_el~age.n,data=dat1.clean,family="binomial")
+summary(M1.a)
+
+#3
+dat1.clean$D.1<-ifelse(dat1.clean$age.n==1,1,0)
+dat1.clean$D.2<-ifelse(dat1.clean$age.n==2,1,0)
+dat1.clean$D.3<-ifelse(dat1.clean$age.n==3,1,0)
+dat1.clean$D.4<-ifelse(dat1.clean$age.n==4,1,0)
+M1<-glm(dat1.clean$know_el~dat1.clean$D.1+dat1.clean$D.2+dat1.clean$D.3+dat1.clean$D.4,family="binomial")
+summary(M1)
+
+library(lmtest)
+lrtest(M1.a,M1)
+
+#4
+dat1.clean$D.young<-ifelse(dat1.clean$age.n ==0,1,0)
+M1.b <- glm(know_el ~ age.n + D.young, data = dat1.clean, family = "binomial")
+summary(M1.b)
+# compare to M1
+summary(M1)
+# testing M1.b against M1
+lrtest(M1.b,M1)
+
+
+#5
+
+M1.c0 <- glm(know_el ~ age.n + D.young + light_score+EE_index + qty_inhabitants + house_type.1 + income, data = dat1.clean, family = "binomial")
+summary(M1.c0)
+
+#Dropping insignificant variables altogether
+M1.c1 <- glm(know_el ~ age.n + D.young + light_score+EE_index + income, data = dat1.clean, family = "binomial")
+summary(M1.c1)
+
+lrtest(M1.c1,M1.c0)
+M1.c <- M1.c1
+
+#6
+#Meaningful indicators for family
+dat1.clean$k_0.5 <- dat1$persons0.5
+dat1.clean$k_6.10 <- dat1$persons6.10
+dat1.clean$k_11.15 <- dat1$persons11.15
+dat1.clean$k_16.18 <- dat1$persons16.18
+
+
+#Number of kids you have
+dat1.clean$nk <- dat1.clean$k_0.5+dat1.clean$k_6.10+dat1.clean$k_11.15+dat1.clean$k_16.18
+Mk.a <- glm(know_el ~ age.n + D.young + light_score+EE_index + income + nk, data = dat1.clean, family = "binomial")
+summary(Mk.a)
+
+#Check misspecification
+dat1.clean$nk0 <- ifelse(dat1.clean$nk==0,1,0)
+dat1.clean$nk1 <- ifelse(dat1.clean$nk==1,1,0)
+dat1.clean$nk2 <- ifelse(dat1.clean$nk==2,1,0)
+dat1.clean$nk3 <- ifelse(dat1.clean$nk==3,1,0)
+dat1.clean$nk4 <- ifelse(dat1.clean$nk==4,1,0)
+dat1.clean$nk5 <- ifelse(dat1.clean$nk==5,1,0)
+
+Mk.b <- glm(know_el ~ age.n + D.young + light_score+EE_index + income + nk0+nk1+nk2+nk3+nk4+nk5, data = dat1.clean, family = "binomial")
+summary(Mk.b)
+
+lrtest(M1.c,Mk.b)
+
+#7
+#Meaningful indicators for geographical location
+dat1.clean$zone <- trunc(dat1$postnummer/1000)
+dat1.clean$zone.n <- trunc(dat1$postnummer/1000)-1
+
+dat1.clean$z.1<-ifelse(dat1.clean$zone==1,1,0)
+dat1.clean$z.2<-ifelse(dat1.clean$zone==2,1,0)
+dat1.clean$z.3<-ifelse(dat1.clean$zone==3,1,0)
+dat1.clean$z.4<-ifelse(dat1.clean$zone==4,1,0)
+dat1.clean$z.5<-ifelse(dat1.clean$zone==5,1,0)
+dat1.clean$z.6<-ifelse(dat1.clean$zone==6,1,0)
+dat1.clean$z.7<-ifelse(dat1.clean$zone==7,1,0)
+dat1.clean$z.8<-ifelse(dat1.clean$zone==8,1,0)
+dat1.clean$z.9<-ifelse(dat1.clean$zone==9,1,0)
+
+Mz.a <- glm(know_el ~ age.n + D.young + light_score+EE_index + income + zone.n, data = dat1.clean, family = "binomial")
+summary(Mz.a)
+
+#Insignificant : try do include zone linearly
+Mz.b <- glm(know_el ~ age.n + D.young + light_score+EE_index + income + z.1 + z.2+ z.3+ z.4+ z.5+ z.6+ z.7+ z.8+ z.9, data = dat1.clean, family = "binomial")
+summary(Mz.b)
+
+#Exclude every zones except z1
+Mz.c <- glm(know_el ~ age.n + D.young + light_score+EE_index + income + z.1, data = dat1.clean, family = "binomial")
+summary(Mz.c)
+lrtest(Mz.c,Mz.b)
+
+lrtest(M1.c,Mz.c)
+
+#No significant difference : stick with Mz2.c (simpler model)
+
+```
+
+
+For the first part of this report, we will analyze a random selection of 1200 observations from the EEHA data set [2], which is analysed thoroughly in Baldini et al.[1] The data set contains a binary variable “$know_{el}$” which is a variable that returns a value of 1 if the consumers currently knows their annual electricity consumption, and a 0 if they do not. The goal of this section is to analyze what determines whether or not consumers are aware of their electricity consumption. Our $Y_i$ discrete regressand is this variable $know_{el}$. The details of the models and the variables used are shown respectively in Table 1.19 and Table 1.20 in the appendix.
+
+## Question 1
+
+First, we consider the “age” variable in the dataset representing the age of the consumer. To provide a representation of the data, we keep Y=$know_{el}$ and set X=age, and plot the conditional sample frequency of knowing the electricity consumption “knowing” $\hat{f}(y=1 | x)$ against age. 
+To do this we must first cross tabulate our data. This gives us the following table (Table 1.1):
+
+
+```{r, echo = FALSE,results='asis'}
+knitr::kable(cross.table.age)
+```
+
+\begin{center} \begin{small} 
+Table 1.1: Cross-tabulation showing Y=$know_{el}$ conditionally to X=age
+\end{small} \end{center}
+
+We can easily see that for our data, the number of consumers between the age 18-29 that do not know their annual electricity consumption is 60. From here, we plot the joint sample frequency distribution on a 3 dimensional histogram Figure 1.1:
+
+```{r, echo = FALSE, fig.align='center', out.width="90%"}
+hist3D(z=Joint.frq.dist, xlab="know_el (Y)" , ylab="Age (X)", main=" Joint sample frequency distribution",border="black")
+```
+
+\begin{center} \begin{small} 
+Figure 1.1: Joint sample frequency distribution of $Y=know_{el}$ conditionally to X=age
+\end{small} \end{center}
+
+Table 1.2 shows which percentage of each age group knows their annual electricity bill with the sample conditional distribution of Y given X.
+
+```{r, echo = FALSE,results='asis'}
+tab = f_Y.X
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.2: Sample conditional distribution of $Y=know_{el}$ given X=age
+\end{small} \end{center}
+
+It can be seen here that of the 60 or older age group, almost 83% of them know their annual electricity bill. To make this data more comprehensible, the sample frequency of knowing the annual electricity bill $\hat{f}(y=1 | x)$ against age is plotted below (left figure), as well as the odds of knowning (right figure):
+
+```{r, echo = FALSE, fig.show='hold', fig.align='center', out.width="40%"}
+plot(f_Y.X[2,], xlab = "Age group", ylab = "Cond freq of knowing")
+plot(as.numeric(levels(dat1.clean$age)),odds,xlab="Age group")
+```
+
+\begin{center} \begin{small}
+Figure 1.2: Sample frequency on "knowing" $\hat{f}(y=1 | x)$ against age (\textbf{left}) and odds of knowing against age (\textbf{right})
+\end{small} \end{center}
+
+We would now like to develop a figure which shows a prediction line for the odds that a certain age group will know their annual electricity consumption. To do this we simply take the log of the odds and plot a trendline as can be seen in Figure 1.3 below.
+
+```{r, echo = FALSE, fig.align='center', out.width="60%"}
+plot(as.numeric(levels(dat1.clean$age)),log(odds),col="red", xlab = "Age group", ylab = "log-odds",pch = 19)
+abline(lm(log(odds) ~ 1+as.numeric(levels(dat1.clean$age))))
+```
+
+\begin{center} \begin{small} 
+Figure 1.3: Log-odds of $Y=know_{el}$ depending on X=age
+\end{small} \end{center}
+
+According to the logit model, the logarithm of the odds should be a linear function of the age group X. Figure 1.3 shows that the model does not provide a good fit (the value of the linear correlation coefficient is r = 0.89, which is low).
+
+## Question 2
+
+Next we will consider the variable age, and construct age.n considering the simple logit model $p(X_i)=\beta_1+\beta_2X_i$ where $X_i$=age.n, where age.n represents the age group indexed from 0 to 4 instead of 1 to 5 (between 18 and 25 is now group 0 instead of group 1). We will refer to this model as M1.a. A summary of this model is tabularized below in Table 3:
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(M1.a)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.3: Summary of M1.a
+\end{small} \end{center}
+
+It should be first noted that the p-values of the 2 estimates are very different. $\beta_2$ is significantly different from 0 (i.e. \textit{“we are able to reject the null hypothesis, which is that $\beta_2$ is equal to 0”}), while $\beta_1$ is not (i.e. \textit{“we are unable to reject the null hypothesis, which is that $\beta_1$ is equal to 0”}). 
+Interpreting these estimates based on the logit model, this means that:
+\begin{itemize}
+\item The logarithm of the odds of knowing your electricity consumption given that you are between 18 and 29 (first group of age) is not significantly different from 0
+\item The change in the logarithm of the odds of knowing your electricity consumption from moving from one age group to the next one is significantly different from 0 (with an estimated change of $\beta_2$ = 0.43)
+\end{itemize}
+
+Going back to the log-odds $p(X_i)$, it can be shown that its derivative is expressed as follows:
+\begin{equation}
+\frac{\delta p(x)}{\delta x} = \beta_{2} \frac{exp(\beta_{1} +\beta_{2} x)}{(1+exp(\beta_{1}+\beta_{2}x))^2}
+\end{equation}
+
+The sign of the derivative is thus given by $\beta_2$ (here negative).This confirms what has been hinted in question 1: the older one is, the higher the odds of them knowing their electricity consumption are.
+
+## Question 3
+
+We will now test to see whether or not $X_i$ should enter the logit function linearly, in other words, we will be testing for misspecification. To do this we have created dummy variables for the different age groups of age.n. We will refer to this model as M1. To test M1.a against M1, we have used a likelihood ratio test. This is possible because M1.a is nested in M1. Taking the notations from Table 1.4 (see below), M1.a can be obtained from M1 through the following restrictions: $a_2=2a_1$, $a_3=3a_1$ and $a_4=4a_1$
+
+\begin{table*}[h!]
+\centering
+\begin{tabular}{|c|c|c|c|}
+\hline
+X.n & M1.a & M1 (general model) & M1 with restrictions \\
+\hline
+0 & $\beta_1$ & $b$ & $b$ \\
+1 & $\beta_1+\beta_2$ & $b+a_1$ & $b+a_1$ \\
+2 & $\beta_1+2\beta_2$ & $b+a_2$ & $b+2a_1$ \\
+3 & $\beta_1+3\beta_2$ & $b+a_3$ & $b+3a_1$ \\
+4 & $\beta_1+4\beta_2$ & $b+a_4$ & $b+4a_1$ \\
+\hline
+\end{tabular}
+\end{table*}
+
+\begin{center} \begin{small} 
+Table 1.4: Illustration of the restrictions needed to get from M1 to M1.a
+\end{small} \end{center}
+
+The results of the likelihood ratio test between M1 and M1.a are summarized in Table 1.5 below:
+
+```{r, echo = FALSE,results='asis'}
+tab = lrtest(M1.a,M1)
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.5: Likelihood ratio test between M1 and M1.a
+\end{small} \end{center}
+
+The p-value here is much lower than 5% (0 in the table indicate a p-value lower than $10^{-3}$), therefore it can be concluded that the M1.a is significantly different from M1 (i.e. \textit{“we are able to reject the null hypothesis, which is that the difference between the 2 likelihood ratio is equal to 0”}). In other terms, the general model M1 is a more accurate model than its restricted model M1.a.
+
+## Question 4
+
+The log-odds plot in Figure 1.3 shows that the model M1.a does not seem to follow the main assumption of the logit model (i.e. that the log-odds of the regressand is a linear function of the explanatory variable). Furthermore, the lr-test in Table 1.5 shows that the general model M1 is significantly more accurate than the M1.a. Thus, it makes sense to augment M1.a.
+A model M1.b was created by adding a single dummy variable for the first age groupe called D.young. The model is then: know_el ~ age.n + D.young.
+
+As M1.a, M1.b can be attained by restricting the general model M1. While M1.a had 2 degrees of freedom (related to 3 restricting equations for M), M1.b has 3 degrees of freedom (related to 2 restricting equations for M). The restrictions needed to get M1.b from M1 are: $a_1 = 2a_2-a_3$ and $a_1 = 3a_3-2a_4$.
+
+\begin{table*}[h!]
+\centering
+\begin{tabular}{|c|c|c|c|}
+\hline
+X.n & M1.b & M1 (general model) \\
+\hline
+0 & $\beta_1+\beta_0$ & $b$ \\
+1 & $\beta_1+\beta_2$ & $b+a_1$ \\
+2 & $\beta_1+2\beta_2$ & $b+a_2$ \\
+3 & $\beta_1+3\beta_2$ & $b+a_3$ \\
+4 & $\beta_1+4\beta_2$ & $b+a_4$ \\
+\hline
+\end{tabular}
+\end{table*}
+
+\begin{center} \begin{small} 
+Table 1.6: Illustration of the restrictions needed to get from M1 to M1.b
+\end{small} \end{center}
+
+We can test M1.b against M1 in the same way we did with M1.a and the likelihood ratio test. The results of this test are summarized in Table 1.7
+
+```{r, echo = FALSE,results='asis'}
+tab = lrtest(M1.b,M1)
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.7: Likelihood ratio test between M1 and M1.b
+\end{small} \end{center}
+
+It can be seen that the p-value of this test is much higher than 5%, indicating that these models are not significantly different (i.e. \textit{“we are unable to reject the null hypothesis, which is that the difference between the 2 likelihood ratio is equal to 0”})
+
+## Question 5
+
+Occam Razor’s law states that, “If you have two equally likely solutions to a problem, choose the simplest." [3] Our model M1.b is simpler than M1 and we will therefore stick with it for now. We will now augment M1.b with more regressors from the data. We would like to see if the profile of a person based on their lifestyle plays a role in that person's knowledge of their annual electricity bill. Therefore we included $light\_score$ and $EE\_index$ - which are both indicators of energy performance, so possibly impacting our regressand -, number of inhabitants in the household $qty_{inhabitants}$, type of household $house\_type.1$ - both sociological indicators, so possibly impacting our regressand, - and income - an economic indicator, so possibly impacting our regressand.
+The summary of this initial model $M1.c_0$ is shown in Table 1.8 below:
+
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(M1.c0)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.8: Summary of $M1.c_0$
+\end{small} \end{center}
+
+Some variables show a p-value above 5%, meaning that the estimate of their coefficient is not significantly different from 0. In particular, the levels of the variable $house\_type.1$ appear as insignificant. We choose to first drop this variable, along with $qty_{inhabitants}$, which leads us to the model $M1.c_1$. Its summary is shown in Table 1.9 below: 
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(M1.c1)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.9: Summary of $M1.c_1$
+\end{small} \end{center}
+
+All the variables in this model are significant (p-value below 5%).
+However, before concluding that this is our final model, we need to perform a likelihood ratio test to compare it with $M1.c_0$. Indeed, it can happen that regressors are highly correlated. This means that dropping 1 variable from our model can affect the significance of the other variables - which is exactly what happened going from models $M1.c_0$ to $M1.c_1$ for the variable income, which became significant. To justify our choice of dropped variables, we need to make sure that the model M1.c we end up with is not significantly worse that the model $M1.c_0$ it is nested in - hence the likelihood ratio test shown in Table 1.10 below:
+
+```{r, echo = FALSE,results='asis'}
+tab = lrtest(M1.c1,M1.c0)
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.10: Likelihood ratio test between $M1.c_0$ and $M1.c_1$
+\end{small} \end{center}
+
+The p-value of the test is above 5%, meaning that these models are not significantly different (i.e. \textit{“we are unable to reject the null hypothesis, which is that the difference between the 2 likelihood ratio is equal to 0”}). Based again on Occam Razor's law, we should keep the simplest model, which is $M1.c_1$ - which we will call from now on M1.c.
+Based on the estimated coefficients, we can thus conclude that variables $light\_score$, $EE\_index$ and income all positively affect the probablity of knowing the electricity bill.
+
+## Question 6
+
+The aim of this question is to answer the following question: "does the number of kids you have have an impact on your knowledge of your electricity bill ?". This idea seems to be far-fetched, so our hypothesis would be that there is no significant impact.
+First, an indicator nk was created, which calculates the number of individuals below the age of 18 in each household. A model Mk.a was created by augmenting model M1.c by this variable. Its summary is shown in Table 1.11 below:
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(Mk.a)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.11: Summary of Mk.a
+\end{small} \end{center}
+
+As shown by its p-value above 5%, the new variable nk is not significant.
+In order to test for functional misspecification, we construct 6 binary variables $nk_i$, which are equal to 1 if the household has i number of kids - the maximum number of kids being 5. Augmenting M1.c by these variables, we end up with model Mk.b, which summary is shown below in Table 1.12:
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(Mk.b)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.12: Summary of Mk.b
+\end{small} \end{center}
+
+The new variables are all insignificant. If we dropped them all, we would end up with model M1.c. As a result, we should perform a likelihood ratio test between M1.c and Mk.b. This is shown in Table 1.13 below:
+
+```{r, echo = FALSE,results='asis'}
+tab = lrtest(M1.c,Mk.b)
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.13: Likelihood ratio test between M1.c and Mk.b
+\end{small} \end{center}
+
+The p-value is above 5%, meaning that we should stick with M1.c (the simplest model). This shows that the number of kids in a household does not have any significant impact on the knowledge of the electricity bill. Our hypothesis is validated.
+
+## Question 7
+
+The aim of this question is to answer the following question: "does the zone you live in have an impact on your knowledge of your electricity bill ?". Rumors say that Jutlanders are more stingy than Sealanders. Taking this statement as our hypothesis, this means that we would expect either a significantly positive estimate for the coefficients for zones 6 to 9 (Jutlanders would know more about their electricity bill), and/or a significantly negative estimate for zone 1 to 4 (Sealanders would know less about their electricity bill) (see Appendix "Figure 1.4" for the Denmark's geographical zones) .
+An indicator zone.n was calculated, which is equal to the zone the household is in minus 1 (by doing so, the first level of zone.n is 0). A model Mz.a was created by augmenting model M1.c by these variables. Its summary is shown in Table 1.14 below:
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(Mz.a)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.14: Summary of Mz.a
+\end{small} \end{center}
+
+As shown by its p-value above 5%, the new variable z.n is not significant.
+In order to test for functional misspecification, binary indicators z.i were constructed, which are equal to 1 of the household is in zone i. Augmenting M1.c by these variables, we end up with model Mz.b, which summary is shown below in Table 1.15:
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(Mz.b)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.15: Summary of Mz.b
+\end{small} \end{center}
+
+Among the new variables, only z.1 is significant. We drop all the other new variables to build a model Mz.c. Its summary is hown in Table 1.16 below:
+
+```{r, echo = FALSE,results='asis'}
+tab = summary(Mz.c)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.16: Summary of Mz.c
+\end{small} \end{center}
+
+All the variables are significant. Before concluding, we still need to perform a likelihood ratio test, because we dropped several variables at once. In fact, 2 tests were conducted: one against Mz.b (see Table 1.17), and the other against M1.c (see Table 1.18):
+
+```{r, echo = FALSE,results='asis'}
+tab = lrtest(Mz.c,Mz.b)
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.17: Likelihood ratio test between Mz.c and Mz.b
+\end{small} \end{center}
+
+```{r, echo = FALSE,results='asis'}
+tab = lrtest(M1.c,Mz.c)
+knitr::kable(round(tab, 3))
+```
+
+\begin{center} \begin{small} 
+Table 1.18: Likelihood ratio test between Mz.c and M1.c
+\end{small} \end{center}
+
+Table 1.17 shows a value above 5%, meaning that we should stick with model Mz.c rather than Mz.b (simplest model).
+Table 1.18 shows a value below 5%, meaning that our new model Mz.c has a likelihood ratio that is significantly different from M1.c. This is logical, as Mz.c is M1.c augmented by a significant variable (z.1)
+
+This allows us to say that living in zone 1 has a significant impact on the knowledge of the electricity bill, since the estimate for the coefficient is negative (see Table 1.16). This means that people living in the region of Copenhaguen know significantly less than the rest their electricity bill. This is not exacly our initial hypothesis, but this is still an interesting result. 
+At first sight, one could interpret this by saying that this is logical, since people living in Copenhaguen have a higher income - so they care less about their bills. Yet, our final includes both the variables \textit{income} and z.1, and it explains the variance in the data better than the model M1.c, which did not have z.1 but still had \textit{income}. Adding z1 improved the fit of the model, which would not have been the case if the 2 variables were totally correlated. The indicator "living in the Copenhaguen area" brings extra information which helps explain the variance in the data in a way the variable \textit{income} could not.
+
+\newpage
+
+# Exercise 2 : Regression analysis of energy consumption
+
+For the second part of this report, we will look into the Residential Energy Consumption Survey (RECS) data [6]. This data collected by the U.S Energy Information Administration (EIA) contains energy-related information about households as well as demographic and economic ones. In this exercise we will analyse 300 random samples (out of 5686) from the RECS data set. The goal in this exercise is to build a predictive model of the electricity usage of an household based on other variables concerning this household in the RECS data set.
+
+```{r presets, include = FALSE}
+
+# Preliminary work (data selection)
+set.seed(09)
+sample.size<-300
+dat.RECS = read.csv(file = "recs.csv", header = TRUE, sep = ",")
+dat2 = dat.RECS[sample(nrow(dat.RECS), sample.size), ] # table with 300 rows picked up randomly in the original table
+
+var = c("LKWH.pers",
+        "NHSLDMEM",
+        "EDUCATION",
+        "MONEYPY",
+        "HHSEX",
+        "HHAGE",
+        "ATHOME") # list of the variables used in the exercise
+
+dat2$LKWH.pers = log(dat2$KWH/dat2$NHSLDMEM) # creation of the variable "LKWH.pers"
+dat2_reduced = dat2 %>% select(var) # table with only the variables of interest
+
+```
+
+## Question 1
+
+First, we divided the regressand variable (Total electricity consumption in KWh : KWH) by the number of household members (NHSLDMEM), and then we logged the regressand variable as its distribution was left skewed. We then analyzed the resulting variable (LKWH.pers) by looking at its distribution :
+
+```{r plot generation, include = FALSE}
+
+# Plot generation for Question 1
+
+# Plots creation
+#Continuous variable : LKWH.pers / HHAGE ####
+plot_LKWH.pers_out = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(bins = 20,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of LKWH.pers with the outliers",
+       x = "Total electricity usage (lkwh)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 20),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+# Removal of the 2 outliers in dat2_reduced
+dat2_reduced = dat2_reduced %>% arrange(LKWH.pers) # ordering the table with LKWH.pers in a crescent order
+dat2_reduced = dat2_reduced[3:300,] # suppressing the 2 outliers (2 first rows of the table)
+
+# Removal of the 2 outliers in dat2
+dat2 = dat2 %>% arrange(LKWH.pers) # ordering the table with LKWH.pers in a crescent order
+dat2 = dat2[3:300,] # suppressing the 2 outliers (2 first rows of the table)
+
+plot_LKWH.pers_wout = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(bins = 20,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of LKWH.pers without the outliers",
+       x = "Total electricity usage (lkwh)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 20),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_HHAGE = ggplot(dat2_reduced, aes(x = HHAGE)) +
+  geom_histogram(bins = 20,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the respondents' ages (HHAGE)",
+       x = "Respondent's age (year)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 20),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold")) # histogram showing the distribution of the variable
+
+# Categorical varibales : NHSLDMEM / EDUCATION / MONEYPY / HHSEX / ATHOME ####
+
+plot_NHSLDMEM = ggplot(dat2_reduced, aes(x = NHSLDMEM)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the number of household members (NHSLDMEM)",
+       x = "Number of household members") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_EDUCATION = ggplot(dat2_reduced, aes(x = EDUCATION)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the highest education completed by the respondent (EDUCATION)",
+       x = "Years of study (years)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_MONEYPY = ggplot(dat2_reduced, aes(x = MONEYPY)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the annual gross household income (MONEYPY)",
+       x = "Annual household income (1 : lowest incomes / 8 : highest incomes)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=14,face="bold"))
+
+plot_HHSEX = ggplot(dat2_reduced, aes(x = HHSEX)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the gender of the respondent (HHSEX)",
+       x = "Gender of the respondent (0 : male / 1 : female)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_ATHOME = ggplot(dat2_reduced, aes(x = ATHOME)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the number of weekdays someone is at home (ATHOME)",
+       x = "Number of weekdays someone is at home (day)") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+```
+
+```{r plot display, echo=FALSE, out.width="40%", fig.show='hold', fig.align='center'}
+plot_LKWH.pers_out
+plot_LKWH.pers_wout
+```
+
+\begin{center}
+\begin{small} Figure 2.1 : Distribution of the total electricity usage of the household (LKWH.pers) with (left) and without (right) outliers
+\end{small} 
+\end{center}
+
+We can see that the distribution is approximately normal, with 2 outliers on the right of the main distribution. The $1^{st}$ outlier is the only sample to have "9" as the number of household members (NHSLDMEM), which could explain why it is an outlier, and we could not find any significant difference for the $2^{nd}$ outlier (even in the bigger set of variables).
+We decided to suppress the two outliers (values of LKWH.pers < 6), as the model we will build afterwards could be affected by those values. Furthermore, suppressing those two samples won’t greatly affect the model, as we still have 298 samples remaining.
+
+Then, we described (see Figure 2.2) the regressors ($X_i$) which we will implement later in the model to explain the total electricity usage of an household
+
+```{r plot display 2, echo=FALSE, out.width="30%", fig.show='hold', fig.align='center'}
+plot_HHAGE
+plot_NHSLDMEM
+plot_EDUCATION
+plot_MONEYPY 
+plot_HHSEX 
+plot_ATHOME 
+```
+
+\begin{center}
+\begin{small} 
+Figure 2.2 : Distribution of the regressors (HHAGE, NHSLDMEM, EDUCATION, MONEYPY, HHSEX and ATHOME)
+\end{small} 
+\end{center}
+
+For each of the variables, each of the sub-group are represented, therefore there is no issue with including these variables in the future model.
+
+## Question 2
+
+```{r M2.a model, echo = FALSE, include = FALSE}
+# Building of the M2.a model
+M2.a = lm(LKWH.pers ~ NHSLDMEM, data = dat2_reduced)
+```
+
+After verifying and cleaning the variables, we first built a linear model with one regressor variable, the number of household members (NHSLDMEM) and the regressand being the log of the total electricity usage in the household (LKWH.pers). We called this model M2.a
+
+## Question 3 
+
+Here is the slope estimate $\hat{\beta_2}$ from Q2.
+
+```{r beta2hat computation, include = FALSE, echo = FALSE, eval = FALSE}
+# Obtention of beta_2_hat by running auxilliary regressions
+beta2hat = sum((dat2$NHSLDMEM - mean(dat2$NHSLDMEM))*dat2$LKWH.pers)/sum((dat2$NHSLDMEM-mean(dat2$NHSLDMEM))^2)
+```
+
+```{r M2.a summary, echo = FALSE, results= 'asis'}
+tab = summary(M2.a)$coefficients
+knitr::kable(round(tab, 3))
+```
+
+\begin{center}
+\begin{small} 
+Table 2.1 : Summary of the regression : LKWH.pers ~ NHSLDMEM
+\end{small} 
+\end{center}
+
+The zeros obtains in the p.value column are actually values $< 10^3$.
+Table 2.1 shows that the number of household members (NHSLDMEM) has a significant influence on the electricity usage of this household (LKWH.pers). Also, the higher the number of household members, the lower the electricity consumption per person ($\hat{\beta_2}$ < 0). This is understandable, as if there are more people in an household, then the electricity usage is shared by more people, which reduces the overall consumption per person (even though more electricity might be used overall, the electricity usage per head is lower).
+
+## Question 4
+
+Here are the asumptions of the M2.a linear model :
+
+i.    Independence of the ($X_i$ , $Y_i$) pairs
+ii.   Conditional normality
+iii.  Exogeneity 
+iv.   Parameter space
+
+First, given n data points, the pairs of data points (X1, Y1), (X2, Y2), ..., (Xn, Yn) are mutually independent.
+The second assumption consists of the assumption of conditional normality of the regressand on the regressors.
+The third assumption states that the conditioning variable is exogenous, meaning that this variable can be treated as fixed points without errors.
+Finally, the fourth assumption expresses the assumption that the statistical parameters used in the model are real numbers, existing in a real parameter space, with the constant conditional variance having the additional constraint of being positive.
+
+Additionally, (i) and (ii) together implicitly express the additional assumption that the residuals are also conditionally normally distributed and independent.
+
+These assumptions are important to the process of inference.
+Notably, the assumption of normality of the residuals is important for the assumption of a normal distribution for the model parameters
+and is therefore important to maintain precision in the calculation of these parameters and of confidence intervals.
+
+Assumption (iii) allows for conditional statements regarding fixed values for the regressors.
+These assumptions are therefore important for determining the posterior distribution for the model and the conditional expectation of the parameters.
+
+
+## Question 5 
+
+Supposing that the assumption of independance (i) and the assumption of exogeneity of all regressors (iii) hold, we tested the normality asumption (ii), first by having a look at the distribution of the number of the total electricity usage (LKWH.pers) conditionally to the number of household members.  
+
+```{r conditional plots generation, include = FALSE}
+
+# Conditional distribution (Y | X) of LKWH.pers conditionally to NHSLDMEM (1 to 6)
+
+plot_LKWH_NHSLDMEM_1 = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(data=subset(dat2_reduced,NHSLDMEM == 1),
+                 bins = 10,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the energy usage (LKWH.pers) conditionally \n to the number of household members (NHSLDMEM = 1) ") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))   # histogram showing the distribution of the variable conditionnaly to X
+  #scale_y_continuous(breaks = seq(0, 12, 2), lim = c(0, 12))
+
+plot_LKWH_NHSLDMEM_2 = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(data=subset(dat2_reduced,NHSLDMEM == 2),
+                 bins = 10,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the energy usage (LKWH.pers) conditionally \n to the number of household members (NHSLDMEM = 2) ") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_LKWH_NHSLDMEM_3 = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(data=subset(dat2_reduced,NHSLDMEM == 3),
+                 bins = 8,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the energy usage (LKWH.pers) conditionally \n to the number of household members (NHSLDMEM = 3) ") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_LKWH_NHSLDMEM_4 = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(data=subset(dat2_reduced,NHSLDMEM == 4),
+                 bins = 8,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the energy usage (LKWH.pers) conditionally \n to the number of household members (NHSLDMEM = 4) ") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_LKWH_NHSLDMEM_5 = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(data=subset(dat2_reduced,NHSLDMEM == 5),
+                 bins = 5,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the energy usage (LKWH.pers) conditionally \n to the number of household members (NHSLDMEM = 5) ") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+
+plot_LKWH_NHSLDMEM_6 = ggplot(dat2_reduced, aes(x = LKWH.pers)) +
+  geom_histogram(data=subset(dat2_reduced,NHSLDMEM == 6),
+                 bins = 5,
+                 fill = 'steelblue') +
+  labs(title = "Distribution of the energy usage (LKWH.pers) conditionally \n to the number of household members (NHSLDMEM = 6) ") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+```
+
+```{r conditional plot display, echo = FALSE, out.width="45%", fig.show='hold', fig.align='center'}
+plot_LKWH_NHSLDMEM_1
+plot_LKWH_NHSLDMEM_2
+plot_LKWH_NHSLDMEM_3
+plot_LKWH_NHSLDMEM_4
+plot_LKWH_NHSLDMEM_5
+plot_LKWH_NHSLDMEM_6
+```
+
+\begin{center}
+\begin{small} 
+Figure 2.3 : Distributions of the energy usage (LKWH.pers) conditionally to the number of household members (NHSLDMEM = 1:6)
+\end{small} 
+\end{center}
+
+As there are really few samples (for X = 7 : 3 samples), the conditional distribution for the X = 7 subcategoy is not normal and does not look like a real distribution, but just some peaks. The plotted conditional distributions could be described as normal (except for X = 6), which partly confirm the conditionnal normality asumption (ii).
+
+After, we assessed how the means of the samples vary for each category of NHSLDMEM.
+
+```{r conditional mean, echo = FALSE, fig.align='center', out.width= "60%", out.height="70%"}
+
+# Computing and plotting of the conditonal mean of LKWH.pers conditionally to NHSLDMEM
+
+conditionalmeans = c(by(data = dat2_reduced$LKWH.pers, INDICES = dat2_reduced$NHSLDMEM, FUN = mean))
+plot(conditionalmeans, 
+     xlab='Number of household members (NHSLDMEM)', 
+     ylab='Mean of total electricity usage (LKWH)',
+     main = "Dotplot of the conditional means of LKWH.pers \n for each subgroup of NHSLDMEM")
+```
+
+\begin{center}
+\begin{small} 
+Figure 2.4 : Dotplot of the conditional means of LKWH.pers for each subgroup of NHSLDMEM
+\end{small} 
+\end{center}
+
+We can see from this graph that the sample mean decreases with the number of household members. This is coherent with the negative estimate we obtained at Q3, Table 2.1 ($\hat{\beta_2}$ = -0.225).
+
+Then, we used the Jarque-Bera (JB) test to assess numerically if the residuals were distributed normally :
+
+```{r jbtest and whitetest 2, echo = FALSE}
+# Jarque-Bera test (using "tseries" library)
+jbtest = jarque.bera.test(resid(M2.a))
+tab.jbtest = data.frame(jbtest$statistic, jbtest$parameter, jbtest$p.value)
+colnames(tab.jbtest) = c("X-squared", "df", "p.value")
+rownames(tab.jbtest) = c("")
+knitr::kable(round(tab.jbtest,3))
+
+# Manual Jarque-Bera test (we construct the test manually once here and then use R functions later on)
+N <- length(dat2_reduced$LKWH.pers)
+mu3hat <- 1/N*sum((resid(M2.a)-mean(resid(M2.a)))^3)
+sigma3hat <- (1/N*sum((resid(M2.a)-mean(resid(M2.a)))^2))^(3/2)
+mu4hat <- 1/N*sum((resid(M2.a)-mean(resid(M2.a)))^4)
+sigma4hat <- (1/N*sum((resid(M2.a)-mean(resid(M2.a)))^2))^(2)
+S <- mu3hat/sigma3hat
+K <- mu4hat/sigma4hat
+JB <- N/6*(S^2+1/4*(K-3)^2) # Chi-squared critical value
+jbtest.p_val <- 1-pchisq(JB, 2)
+```
+
+\begin{center}
+\begin{small} 
+Table 2.2 : Summary of the Jarque-Bera test on the residuals of the regression of LKWH.pers (Y) on NHSLDMEM (X) (Table 2.1)
+\end{small} 
+\end{center}
+
+The p-value obtained is roughly 0.12. Therefore we cannot reject the null hypothesis ($H_0$ = "The residuals are normally distributed"), as the commonly choosen critical p-value to reject the null hypothesis is 0.05. Therefore, we can conclude that the residuals are normally distributed.
+
+## Question 6
+
+```{r crossplot, echo = FALSE, fig.align='center', out.width = "60%", out.height= "60%"}
+dat2_reduced$resid = resid(M2.a)
+ggplot(dat2_reduced, aes(x = as.factor(NHSLDMEM), y = resid)) + 
+  geom_boxplot() +
+  geom_point() + 
+  labs(x = "Number of household members", 
+       y = "Residuals", 
+       title = "Crossplot of residuals by number of \n household members (NHSLDMEM)") +
+   theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=17,face="bold"))
+```
+
+\begin{center}
+\begin{small} 
+Figure 2.5 : Crossplot of the residuals by number of household members (NHSLDMEM)
+\end{small} 
+\end{center}
+
+```{r whitetest, echo = FALSE, eval = FALSE}
+
+# Constrtuction of White's Test (We construct the White test once here and then use a R function for the future White test)
+
+uhat <- resid(M2.a)
+uhat_2 <- uhat^2
+yhat <- predict(M2.a)
+yhat_2 <- yhat^2
+white_test <- lm(uhat_2 ~ yhat + yhat_2)
+white_test.R2 <- summary(white_test)$r.squared
+N <- length(dat2_reduced$LKWH.pers)
+chisq.white <- white_test.R2*N
+Fhet <- (white_test.R2/2) / ((1-white_test.R2)/(N-3)) # numdf = 2 and dendf = 295 (=N-3)
+wtest.p_val <- pf(Fhet,2,N-3,lower.tail=F)
+```
+
+The White's test gives us a F-statistic of 5.745, which correspond to a p-value of roughly 0.004. Therefore we can reject the null hypothesis ($H_0$ = "Homoskedasticity is respected"), and conclude that there is evidence of heteroskedasticity, which means that the conditional variance of the residuals given the number of household members varies with the number of household members. We could see this by looking at the "Crossplot of residuals by number of household members" just above (Figure 2.5), for example the residuals are much more spread for the subgroup "1" than for the other ones. The consequence of heteroskadasticity is that inferences made from the model could be misleading or false [3].
+
+## Question 7
+
+```{r Q7, echo = FALSE, include = FALSE}
+
+# Deletion of residual outliers (the ones below -1.5)
+#dat2_reduced = dat2_reduced %>% arrange(resid)
+#dat2_reduced = dat2_reduced %>% filter(resid > -1.5)
+
+# Jarque-Bera Test
+jarque.bera.test(dat2_reduced$resid)
+
+# White Test
+dat2_reduced$predic = predict(M2.a)
+uhat <- dat2_reduced$resid
+uhat_2 <- uhat^2
+yhat <- dat2_reduced$predic
+yhat_2 <- yhat^2
+white_test <- lm(uhat_2 ~ yhat + yhat_2)
+summary(white_test)
+```
+
+Looking at the "Crossplot of residuals by number of household members" in Q6 (Figure 2.5), we can see that some residuals are extreme, such as the ones below the value of -1.5. When removing them, we obtain a higher p-value for the Jarque-Bera test (which means an even more normal distribution of the residuals), but the p-value for the White Test remain below 0.05, therefore the residual conditional variance still varies conditionally the number of household members, and we do not observe major changes by removing those suspected outliers.
+
+
+|                                              | Jarque-Bera (p-val) | White (p-val) |
+|----------------------------------------------|---------------------|---------------|
+| All the samples (n = 300)                    | $< 10^{-16}$        | 0.3598        |
+| Q1's outliers removal (n = 298)              | 0.1191              | 0.0036        |
+| Residual outliers (< -1.5) removal (n = 293) | 0.1318              | 0.0023        |
+
+\begin{center}
+\begin{small} 
+Table 2.3 : Results of the Jarque-Bera and White tests on different sample sets (outliers' removal)
+\end{small} 
+\end{center}
+
+However (as shown in Table 2.3), when computing the p-value of the Jarque-Bera test with all the 300 samples (with the two outliers removed in Q1), we obtain a p-value below 0.05, which confirms that we had to remove them from the initial set.
+
+## Question 8
+
+In order to better specify the model, more variables were added to the model, variables which are relevant to explain the total electricity usage (LKWH.pers). Namely, we added : the highest education completed by the respondent (EDUCATION), the annual gross household income for the last year (MONEYPY), the respondent's gender (HHSEX), the respondent's age (HHAGE) and the number of weekdays someone is at home (ATHOME), each of these variables are further described in Table 2.9. This new model is called M2.b.
+
+```{r Q8, echo = FALSE, include = FALSE}
+
+# Construction of model M2.b and M2.b_modif
+
+M2.b = lm(LKWH.pers ~ NHSLDMEM + EDUCATION + MONEYPY + HHAGE + HHSEX + ATHOME, data = dat2)
+M2.b_modif = lm(LKWH.pers ~ NHSLDMEM + EDUCATION + MONEYPY + HHAGE , data = dat2)
+
+# Jarque-Bera Test 
+jbtest.2 = jarque.bera.test(resid(M2.b))
+jb.pv = jbtest.2$p.value
+
+# White Test
+uhat <- resid(M2.b)
+uhat_2 <- uhat^2
+yhat <- predict(M2.b)
+yhat_2 <- yhat^2
+white_test <- lm(uhat_2 ~ yhat + yhat_2)
+f = summary(white_test)$fstatistic
+white.pv = pf(f[1],f[2],f[3],lower.tail=F) # extract the p.value of the fstatistics
+```
+
+From the new Jarque-Bera test, we can conclude that with the addition of the new variables to the model, the residuals are even more normally distributed (the p-value with only one explanatory variable (NHSLDMEM) was 0.12 and now the p-value is roughly 0.30). Furthermore, from the new White test, we can conclude that with the addition of the variables, we cannot reject the null hypothesis anymore ($H_0$ = "Homoskedasticity is respected"), and therefore, the conditional variance doesn't vary significantly conditionally to each subgroup of each variable. 
+From those two mis-specification test, we can conclude that the augmented model is well-specified.
+
+## Question 9 
+
+```{r M2.b summary, include = FALSE}
+
+# Summary of the M2.b model
+
+round(summary(M2.b)$coefficients, 3)
+```
+
+### Interpretation of the estimates
+As seen in the first model (M2.a), the number of household members significantly negatively impact the electricty usage per person (LKWH.pers), which is coherent as more people will benefit from the same energy comsumption (which will split the consumption between the recipients). 
+The education (EDUCATION) also significantly impact negatively LKWH.pers, which means that higher educated people tend to consume less electricty than lower educated people. A simple explanation of this might be that higher educated people are more aware of the consequences of the use of electricity (global warming for example). The annual gross household income (MONEYPY) significantly impact positively LKWH.pers, which is cohenrent as the richer an household, the bigger the house might be and the more electrical appliances the household might own. 
+As one could assume, the gender of the respondent is not significantly correlated to LKWH.pers, as the gender of the respondent does not condition the gender distribution within the household (which could be linked to LKWH.pers but it would remain to be proven).
+The respondent's age (HHAGE) significantly affect positively LKWH.pers, which is hardly explainable we would not think that it influence LKWH.pers (as with the respondent gender). After, further digging in the data, we realise that HHAGE is significantly linked to the number of children / adults (NUMCHILD / NUMADULT, so globally the age distribution in the household) in the household, which are variables making more sense in explaining LKWH.pers (however we will keep HHAGE in the model as it is a simpler variable).
+And finally, one might have expected the number of weekdays someone is at home (ATHOME) to be significantly correlated to LKWH.pers, however it is not. One reason could be that we do not know how many people are present at once. For instance, let's say five people might be staying at home on Mondays in one household while one person, in an other one, might be staying on its own on Mondays. So in this example, this variable (ATHOME) is not telling us enough, perhaps we would need to know the number of people staying at home each day for the variable to be more insighful.
+
+Overall the regressors which impact LKWH.pers are (from the most impactful to the less impactful) : the number of household members (NHSLDMEM), the education of the respondent (EDUCATION), the annual gross household income (MONEYPY) and the age of the respondent (HHAGE).
+
+
+```{r Q9, include = FALSE, echo = FALSE}
+
+# Exclusion and addition of regressors of "Table 1" and visualization of the estimates and p-values
+
+M2.b_new = lm(LKWH.pers ~ NHSLDMEM + EDUCATION + MONEYPY + HHAGE, data = dat2_reduced)
+est_with = data.frame(round(summary(M2.b)$coefficients, 3)[,1])
+est_without = data.frame(round(summary(M2.b_new)$coefficients, 3)[,1])
+p.val_with = data.frame(round(summary(M2.b)$coefficients, 3)[,4])
+p.val_without = data.frame(round(summary(M2.b_new)$coefficients, 3)[,4])
+```
+
+We removed the non-significant varibles (HHSEX and ATHOME) from the model (M2.b_modif), and we can observe in Table 2.4 that their removal did not affect the other estimates and p-values. 
+
+|  | Estimate (with HHSEX/ATHOME) | Estimate (without HHSEX/ATHOME) |  p.value (with HHSEX/ATHOME) | p.value (without HHSEX/ATHOME) |
+|------------------------------|------------------------------|---------------------------------|------------------------------|--------------------------------|
+| NHSLDMEM            | -0.201 | -0.200 | $< 10^{-3}$ | $< 10^{-3}$ |
+| EDUCATION              | -0.101 | -0.101 | 0.006 | 0.006 |
+| MONEYPY                | 0.058 | 0.056 | 0.002 | 0.002 |
+| HHAGE                   | 0.011 | 0.011 | $< 10^{-3}$ | $< 10^{-3}$ |
+| HHSEX                     | -0.071 | 0 | 0.331 | NA |
+| ATHOME                       | -0.008 | 0 | 0.679 | NA |
+
+\begin{center}
+\begin{small} 
+Table 2.4 : Results of the modification of the model M2.b (estimates and p-values) before and after removal of HHSEX and ATHOME
+\end{small} 
+\end{center}
+
+We chose to add two other relevant variables to our model (M2.c). DIVISION which describes the location of the respondent's dwelling and TYPEHUQ which describe the type of housing. Two factors which influence the electricity consumption according to Jones et al. 2015 [4].
+
+```{r additionvar, include = FALSE}
+
+# Addition of other relevant variables to the model (+ description of the variables)
+
+# Barplot of DIVISION
+plot_DIVISON = ggplot(dat2, aes(x = DIVISION)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the geographical locations of \n the respondents (DIVISION)",
+       x = "Geographical location of the respondents") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=15,face="bold")) + 
+  scale_x_continuous(breaks = c(1,2,3,4,5,6,7,8,9,10), 
+                     label = c("New England",  "Middle Atlantic", "East South Central", "West North Central","South Antlantic","East South Central","West South Central","Mountain North","Mountain South","Pacific")) +
+  coord_flip()
+
+# Barplot of TYPEHUQ 
+plot_TYPEHUQ = ggplot(dat2, aes(x = TYPEHUQ)) +
+  geom_bar(fill = 'steelblue') +
+  labs(title = "Barplot of the type of housing of the \n sample's respondent (TYPEHUQ)",
+       x = "Type of housing of the respondent") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        axis.text=element_text(size=15),
+        axis.title=element_text(size=15,face="bold")) +
+  scale_x_continuous(breaks = c(1,2,3,4,5),
+                     label = c("Mobile Home","Sf detached house","Sf attached house","Appartment 2 to 4 units", "Appartment more 5 units")) +
+  coord_flip()
+```
+
+```{r barplotaddvar1, echo = FALSE, out.width="50%", fig.align="center"}
+
+# Display of the barplots
+
+plot_DIVISON
+plot_TYPEHUQ
+```
+
+\begin{center}
+\begin{small} 
+Table 2.6 : Barplot of the two additionnal variables (DIVISION and TYPEHUQ)
+\end{small} 
+\end{center}
+
+As shown in the barplot in Table 2.6, DIVISION and TYPEHUQ have no major problem and they are both significantly linked to LKWH.pers (p-value of the F-statistic equals to $7.66*10^{-10}$ and $9.23*10{-6}$ respectively), as mentionned in Jones et al. 2015 [4].
+
+## Question 10
+
+```{r Q10, echo = FALSE}
+
+# New model 
+
+# Creation of binary variables of DIVISION and TYPEHUQ
+ dat2$New.England<-ifelse(dat2$DIVISION==1,1,0)
+ dat2$Middle.Atlantic<-ifelse(dat2$DIVISION==2,1,0)
+ dat2$East.North.Central<-ifelse(dat2$DIVISION==3,1,0)
+ dat2$West.North.Central<-ifelse(dat2$DIVISION==4,1,0)
+ dat2$South.Antlantic<-ifelse(dat2$DIVISION==5,1,0)
+ dat2$East.South.Central<-ifelse(dat2$DIVISION==6,1,0)
+ dat2$West.South.Central<-ifelse(dat2$DIVISION==7,1,0)
+ dat2$Mountain.North<-ifelse(dat2$DIVISION==8,1,0)
+ dat2$Mountain.South<-ifelse(dat2$DIVISION==9,1,0)
+ dat2$Pacific<-ifelse(dat2$DIVISION==10,1,0)
+
+ dat2$Mobile.Home<-ifelse(dat2$TYPEHUQ==1,1,0)
+ dat2$Sf.detached.house<-ifelse(dat2$TYPEHUQ==2,1,0)
+ dat2$Sf.attached.house<-ifelse(dat2$TYPEHUQ==3,1,0)
+ dat2$Appartment<-ifelse(dat2$TYPEHUQ %in% c(4,5),1,0)
+
+# Construction of model M2.c
+M2.c = lm(LKWH.pers ~ NHSLDMEM + EDUCATION + MONEYPY + HHAGE + New.England +  Middle.Atlantic + East.South.Central + West.North.Central + South.Antlantic + East.South.Central + West.South.Central + Mountain.North + Mountain.South + Pacific + Mobile.Home + Sf.detached.house + Sf.attached.house + Appartment, data = dat2) 
+```
+
+```{r ttest, echo = FALSE, include = FALSE, eval = FALSE}
+# Manual t-test
+N <- length(dat2_reduced$LKWH.pers)
+s2 = 1/(N-2)*sum(resid(M2.c)^2) # 2 degrees of freedom
+sehat2 = s2 / sum((dat2$NHSLDMEM - mean(dat2$NHSLDMEM))^2)
+t.value = M2.c_summary$coefficients[2] / sqrt(sehat2)
+ttest_p.value = 2*pt(-abs(t.value), df=N-2)  
+```
+
+Table 2.5 shows that, concerning the respondents' geographical location, respondents living in East South Central, West North Central, South Antlantic and West South Central use significantly more electricty than respondents in other locations (this is coherent with Figure 2.7 in appendix, where we can see that in these precise census divisions, electricity consumption is higher than anywhere else in the US). Concerning the type of housing, we can see that respondents leaving in mobile home, single-family attached houses and single-family detached houses use significantly more electricity than the other respondents. We therefore created an other model (M2.c_modif) in which we kept only the variables of the M2.c model significantly influencing the electricity usage of a household (LKWH.pers).
+
+```{r M2.c summary, echo = FALSE,results='asis'}
+# Summary of the model M2.c
+knitr::kable(round(summary(M2.c)$coefficient, 3))
+```
+
+\begin{center}
+\begin{small} 
+Table 2.5 : Summary of the M2.c model
+\end{small} 
+\end{center}
+
+To assess if a regressor variable is significantly linked to a regressand, one can also perform a t-test. We performed the t-test on the number of household members (NHSHLDMEM), with the null hypothesis being $H_0 : \beta_2 = 0$ and the alternative hypothesis being $H_a : \beta_2 < 0$ (as we expect that the more household members there are, the less electricity consumption per person there will be, see Table 2.1 in Q1).
+The t-test gives us a t-value of $-8.71$ which correspond to a p-value of $2.21*10^{-16}$. Therefore, we can reject the null hypothesis and opt for the $H_a$ ($\beta_2 < 0$), confirming the result we obtained before (Table 2.1)
+
+## Question 11 / 12
+
+```{r lrtest, echo = FALSE}
+
+# Construction of the final model M2.c_modif
+M2.c_modif = lm(LKWH.pers ~ NHSLDMEM + EDUCATION + MONEYPY + HHAGE +  East.South.Central + West.North.Central + South.Antlantic + West.South.Central + Mobile.Home + Sf.detached.house + Sf.attached.house, data = dat2) 
+
+# LR test / comparison of the different models
+
+# LR.test = lrtest(M2.c_modif,M2.c)
+
+# Pseudo-manual LR test
+# N <- length(dat2_reduced$LKWH.pers)
+# M2.a.sigma <- summary(M2.a)$sigma * sqrt((N-M2.a$rank)/N)
+# M2.b.sigma <- summary(M2.b)$sigma * sqrt((N-M2.b$rank)/N)
+# logL.max.R <- sum(dnorm(dat2_reduced$LKWH.pers, mean=fitted(M2.a), sd=M2.a.sigma, log=TRUE))
+# logL.max.U <- sum(dnorm(dat2_reduced$LKWH.pers, mean=fitted(M2.b), sd=M2.b.sigma, log=TRUE))
+# LR <- 2*(logL.max.U-logL.max.R)
+# df <- M2.b$rank - M2.a$rank
+# CV <- qchisq(0.95, df, lower.tail = TRUE, log.p = FALSE) # the 95% CV
+# p_val <- pchisq(LR, df, lower.tail = F, log.p = F)
+```
+
+In order to know if the addition / removal of one or multiple regressors impact significantly our model, one can perform a Log-Likelihood Ration Test in order to compare two different models. We compared the 5 models (cf. Table 2.9 for the details of the models) built during this exercise (i.e : M2.a, M2.b, M2.b_modif, M2.c and M2.c_modif). Here are the p-values associated to the log-likelihood ration test statistic, for the different comparisons :
+
+|  | M2.a vs. M2.b | M2.b vs. M2.b_modif | M2.b_modif vs. M2.c | M2.c_modif vs. M2.c |
+|---------|----------------|---------------------|---------------------|-------------|
+| p-value | $9.51*10^{-7}$ | $0.55$              | $6.73*10^{-6}$      | 0.77        |
+
+
+\begin{center}
+\begin{small} 
+Table 2.6 : Results of the LR test (p.value of the log likelihood ratio test statistic) comparing 4 models (M2.a, M2.b, M2.b modif and M2.c)
+\end{small} 
+\end{center}
+
+
+- M2.a vs. M2.b : we obtain a p-value of $9.51*10^{-7}$, we can therefore reject the null hypothesis ($H_0$ : "The estimates of the added varibales equal 0"), and conclude that the added variables have a significant impact on total electricity usage of a household.
+- M2.b vs. M2.b_modif : we obtain a p-value of 0.55, therefore we cannot reject the null hypothesis, which means that the two variables (ATHOME and HHSEX) do not add any significance to the model (as we have concluded in Q9. Table 2.4).
+- M2.b_modif vs. M2.c : we obtain a p-value of $6.73*10^{-6}$, which tells us that the two variables (REGIONC and TYPEHUQ) matter in explaining the electricity usage of a household.
+- M2.c_modif vs. M2.c : for this last LR-test, we obtain a p-value of 0.77, which means that there is no significant different between the two model, we will thereofre keep simple simplest one (Occam Razor's law)
+
+## Question 13 
+
+Our final model is M2.c_modif (Table 2.7). All the selected variables are significantly linked to the total electricity usage of an household.
+
+```{r M2.c_modif summary, echo = FALSE,results='asis'}
+# Summary of the model M2.c_modif
+knitr::kable(round(summary(M2.c_modif)$coefficient, 3))
+```
+
+\begin{center}
+\begin{small} 
+Table 2.7 : Summary of M2.c modif
+\end{small} 
+\end{center}
+
+One can then wonder if the parameters, we selected are structural parameters. In econometrics, in order for a parameter to be structural, (1) it needs to be invariant upon intervention on the economy (new regulation for example), (2) it should not vary when the sample is extended and (3) it should not be derived from more basic parameters.
+In this report, we have not tested asumptions (1) and (2). However, we have discussed the asumpiton (3) in Q9, where we have concluded that HHAGE (the age of the respondent) was significantly correlated with the number of children or adults in a household, these variables being therefore variables from which HHAGE is derived. So in that sense, HHAGE is not structural. Furthermore, to determine if a variable is structural, we used the LR-test which showed us the essential variables in the models, which led us to M2.c_modif. Also removing some variables of the model and assessing the impact on the estimates of the other variables (see Table 2.4 in Q9), was one way of assessing if our parameters are structural and therefore that they are not linked to one another. 
+
+\newpage
+
+# References
+
+```{r, results="asis", echo=FALSE}
+require("knitcitations")
+cleanbib()
+options("citation_format" = "pandoc")
+read.bibtex(file = "C:/Users/Pierre/Desktop/DTU/Cours/Econometrics/Mid_term_assignment/Econometrics_midterm.bib")
+``` 
+
+\newpage
+
+# Appendix 
+
+| Model name  | Model variables |
+|-------------|------------------------------------------------------------|
+| M1.a | age.n |
+| M1 | age.n.0 / age.n.1 / age.n.2 / age.n.3 / age.n.4 |
+| M1.b | age.n / D.young |
+| $M1.c_0$ | age.n / D.young / $light\_score$ / $EE\_index$ / $qty\_inhabitants$ / $house\_type$ / income |
+| $M1.c$ | age.n / D.young / $light\_score$ / $EE\_index$ / income |
+| $Mk.a$ | age.n / D.young / $light\_score$ / $EE\_index$ / income / nk |
+| $Mk.b$ | age.n / D.young / $light\_score$ / $EE\_index$ / income / nk0 / nk1 / nk2 / nk3 / nk4 |
+| $Mz.a$ | age.n / D.young / $light\_score$ / $EE\_index$ / income / zone.n |
+| $Mz.b$ | age.n / D.young / $light\_score$ / $EE\_index$ / income / z.1 / z.2 / z.3 / z.4 / z.5 / z.6 / z.7 / z.8 |
+| $Mz.c$ | age.n / D.young / $light\_score$ / $EE\_index$ / income / z.1 |
+
+\begin{center}
+\begin{small} 
+Table 1.19 : Summary of the models used in Exercise 1
+\end{small} 
+\end{center}
+
+| Variable name | Variable meaning |
+|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| $know_{el}$          | Knowledge of own electricity consumption: 1 if yes, 0 if no |
+| age                  | Age of the consumer (5 levels: 18–29, 30–39, 40–49, 50–59, 60 or older) |
+| $light\_score$       | Energy efficiency lighting ownership, in [0,1] |
+| $EE\_index$          | Behavioural energy efficiency index, in [0,1] |
+| $qty\_inhabitants$   | Number of household inhabitants |
+| $house\_type$        | 4 levels: apartment, farmhouse, single house, townhouse |
+| income               | Gross household income |
+
+\begin{center}
+\begin{small} 
+Table 1.20 : Names and meanings of the variables used in Exercise 1
+\end{small} 
+\end{center}
+
+
+| Model name  | Model variables |
+|--------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| M2.a | NHSLDMEM |
+| M2.b | NHSLDMEM / EDUCATION / MONEYPY / HHAGE / HHSEX / ATHOME |
+| M2.b_modif | HSLDMEM / EDUCATION / MONEYPY / HHAGE |
+| M2.c | NHSLDMEM / EDUCATION / MONEYPY / HHAGE / DIVISION (each category) / TYPEHUQ (each category) |
+| M2.c_modif | NHSLDMEM / EDUCATION / MONEYPY / HHAGE / East.South.Central / West.North.Central / South.Antlantic / West.South.Central / Mobile.Home / Sf.detached.house / Sf.attached.house |
+
+\begin{center}
+\begin{small} 
+Table 2.8 : Summary of the models used in Exercise 2
+\end{small} 
+\end{center}
+
+| Variable name | Variable meaning |
+|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| KWH                  | Total site electricity usage, in 2015, in kilowatthours |
+| LKWH.pers            | Logarithm of KWH/NHSLDMEM where KWH is total electricity usage in kwhs. |
+| NHSLDMEM             | Number of household members |
+| EDUCATION            | Highest education completed by respondent (1-5) |
+| MONEYPY              | Annual gross household income for the last year (1-8) |
+| HHSEX                | Respondent gender : 0 if male and 1 if female. |
+| HHAGE                | Respondent age, 18-110 |
+| ATHOME               | Number of weekdays someone is at home (1-5) |
+| DIVISION             | Census region of the respondent (house) : 1 : New England / 2 : Middle Atlantic / 3 : East North Central / 4 : West North Central / 5 : South Atlantic / 6 : East South Central / 7 : West South Central / 8 : Moutain North / 9 : Moutain South / 10 : Pacific |
+| TYPEHUQ              | Type of housing unit of the respondent (1 : Mobile Home / 2 : Single-family detached house / 3 : Single-family attached house /  4 : Appartment in a building with 2 to 4 units / 5 : Apartment in a building with 5 or more units) |
+
+\begin{center}
+\begin{small} 
+Table 2.9 : Names and meanings of the variables used in Exercise 2
+\end{small} 
+\end{center}
+
+```{r, include=TRUE, fig.align="center", fig.cap= NULL, echo=FALSE}
+knitr::include_graphics("C:/Users/Pierre/Desktop/DTU/Cours/Econometrics/Mid_term_assignment/postnummerkort.pdf")
+```
+
+\begin{center}
+\begin{small} 
+Figure 1.4 : Denmark's geographical zones
+\end{small} 
+\end{center}
+
+```{r, include=TRUE, fig.align="center", fig.cap= NULL, echo=FALSE}
+knitr::include_graphics("C:/Users/Pierre/Desktop/DTU/Cours/Econometrics/Mid_term_assignment/Electricity_cons_us_chartmap")
+```
+
+\begin{center}
+\begin{small} 
+Figure 2.7 : Electricity consumption in the United States in 2015 (KWh)
+\end{small} 
+\end{center}
+
+
+
+```{r additional code, include=FALSE, echo=FALSE, eval=FALSE}
+# Map (Figure  2.7) generation (requires to enable Maps Static API)
+
+library("RCurl")
+library("ggmap")
+library("ggplot2")
+library("dplyr")
+register_google(key = "your_key", write = TRUE)
+
+summarize = dat2 %>% 
+  group_by(DIVISION) %>% 
+  summarize(mean = mean(LKWH.pers))
+
+summarize = summarize %>% mutate(longitude = case_when(DIVISION == "1"~ -71.458964, 
+                                      DIVISION == "2" ~ -76.817370,
+                                      DIVISION == "3" ~ -86.733765,
+                                      DIVISION == "4" ~ -96.533570,
+                                      DIVISION == "5" ~ -80.042,
+                                      DIVISION == "6" ~ -89.722,
+                                      DIVISION == "7" ~ -97.807,
+                                      DIVISION == "8" ~ -109.234,
+                                      DIVISION == "9" ~ -109.234,
+                                      DIVISION == "10" ~ -119.505
+                                        )) 
+
+summarize = summarize %>% mutate(latitude = case_when(DIVISION == "1"~ 44.059780, 
+                                            DIVISION == "2" ~ 40.880476,
+                                            DIVISION == "3" ~ 40.964946,
+                                            DIVISION == "4" ~ 42.603217,
+                                            DIVISION == "5" ~ 35.018,
+                                            DIVISION == "6" ~ 34.725,
+                                            DIVISION == "7" ~ 32.604,
+                                            DIVISION == "8" ~ 44.011,
+                                            DIVISION == "9" ~ 35.802,
+                                            DIVISION == "10" ~ 40.498
+                                              )) 
+
+map<-get_map(location='united states', 
+             zoom=4, 
+             maptype = "terrain",
+             source='google',
+             color='color')
+
+chartmap = ggmap(map) + 
+  geom_point(aes(x=longitude, y=latitude, show_guide = TRUE, colour = mean), size = 21, data = summarize, alpha=0.8, na.rm = T)  + 
+  scale_color_gradient(low="beige", high="red") + 
+  theme(
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.line = element_blank(),
+    axis.text = element_blank(),
+    plot.title = element_text(hjust = 0.5, size = 15)
+  ) +
+  labs(
+    title = "Electricity consumption in the United States in 2015",
+    color = "Electricity consumption (LKWh)"
+  ) 
+```
+
+
